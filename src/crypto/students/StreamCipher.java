@@ -34,6 +34,7 @@ public class StreamCipher {
 	 */
 	public void updateShiftRegister() {
 		// log.error("You must implement this function!");
+		// ri = (p1 * ri−1 + p2)
 		this.r_i = (p1.multiply(r_i).add(p2)).mod(this.prime);
 	}
 
@@ -56,10 +57,11 @@ public class StreamCipher {
 	 */
 	private byte msb(BigInteger value, int n) {
 		// log.error("You must implement this function!");
-		//byte[] msg = value.toByteArray();
+		// if value < 2^8 - 1, return value
 		if(value.compareTo(new BigInteger("2").pow(n).subtract(BigInteger.ONE)) < 0) {
 			return value.byteValue();
 		}
+		// if value > 2^8 - 1, >>> length - n
 		BigInteger msg = value.shiftRight(value.bitLength() - n);
 		return msg.byteValue();
 	}
@@ -73,8 +75,7 @@ public class StreamCipher {
 	 */
 	private byte[] _crypt(byte[] msg) {
 		// log.error("You must implement this function!");
-		for (int i = 0; i < msg.length; i++) {	
-			
+		for (int i = 0; i < msg.length; i++) {
 			msg[i] = (byte) (msg[i] ^ msb(this.r_i, 8));
 			updateShiftRegister();
 		}

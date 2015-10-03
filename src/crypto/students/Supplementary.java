@@ -25,13 +25,13 @@ public class Supplementary {
 	 * @return A 64 bit integer
 	 */
 	public static BigInteger parityWordChecksum(BigInteger key) {
-		BigInteger result = new BigInteger("0");
-	    BigInteger mask = BigInteger.ZERO;
+		BigInteger result = BigInteger.ZERO;
+	    BigInteger xor = BigInteger.ZERO;
 	    for (int i = 0; i < 64; i++) {
-	        mask = mask.setBit(i);
+	        xor = xor.setBit(i);
 	    }
 	    for (int i = 0; i < 2048; i += 64) {
-	        result = result.xor(key.shiftRight(i).and(mask));
+	        result = result.xor(key.shiftRight(i).and(xor));
 	    }
 	    return result;
 	}
