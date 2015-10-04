@@ -44,6 +44,7 @@ public class MitMServer {
 	private DataInputStream reader_from_client;
 	private DataOutputStream writer_to_server;
 	private DataInputStream reader_from_server;
+	private int count;
 
 	// server related
 	BigInteger generator;
@@ -119,6 +120,8 @@ public class MitMServer {
 		specsDoneRequest.fromJSON(StringParser.getUTFString(new String(client_spec, "UTF-8")));
 		transfer_to_server(specsDoneRequest.toJSON().getBytes("UTF-8"));
 
+		count = (int)specsDoneRequest.getCounter();
+
 		streamCipher_server = new StreamCipher(shared_key_server, prime, p1, p2);
 		streamCipher_client = new StreamCipher(shared_key_client, prime, p1, p2);
 
@@ -126,24 +129,21 @@ public class MitMServer {
 		byte[] msg = read_from_server();
 		String server_msg = new String(msg, "UTF-8");
 		while(server_msg.contains(ServerMessageType.SERVER_NEXT_LENGTH.toString())) {
-			transfer_to_client(msg);
-			long messageLength = 0L;
+			//transfer_to_client(msg);
+
 			NextLengthResponse response = new NextLengthResponse();
 			response.fromJSON(StringParser.getUTFString(server_msg));
 
-			messageLength = response.getLength();
+			System.out.println(1);
+			count++;
 
-			byte[] client_next_length_recv = read_from_client();
-			MessageLengthReceivedRequest messageLengthReceivedRequest = new MessageLengthReceivedRequest();
-			messageLengthReceivedRequest.fromJSON(StringParser.getUTFString(new String(client_next_length_recv, "UTF-8")));
-			transfer_to_server(messageLengthReceivedRequest.toJSON().getBytes("UTF-8"));
-
-			decrypt_and_encrypt_server_msg(messageLength);
+			decrypt_and_encrypt_server_msg(response);
 
 			byte[] client_text_recv = read_from_client();
 			TextReceivedRequest textReceivedRequest = new TextReceivedRequest();
 			textReceivedRequest.fromJSON(StringParser.getUTFString(new String(client_text_recv, "UTF-8")));
 			transfer_to_server(textReceivedRequest.toJSON().getBytes("UTF-8"));
+			count = (int)textReceivedRequest.getCounter();
 
 			msg = read_from_server();
 			server_msg = new String(msg, "UTF-8");
@@ -155,18 +155,22 @@ public class MitMServer {
 		// send message from client to server
 		byte[] c_msg = read_from_client();
 		String client_msg = new String(c_msg, "UTF-8");
-		while(client_msg.contains(ServerMessageType.SERVER_NEXT_LENGTH.toString())) {
-			transfer_to_client(c_msg);
-			long messageLength = 0L;
-			NextLengthResponse response = new NextLengthResponse();
-			response.fromJSON(StringParser.getUTFString(client_msg));
+		while(client_msg.contains(ClientMessageType.CLIENT_NEXT_LENGTH_REQUEST.toString())) {
 
-			messageLength = response.getLength();
+			NextLengthRequest response = new NextLengthRequest();
+			response.fromJSON(StringParser.getUTFString(client_msg));
+			transfer_to_server(response.toJSON().getBytes("UTF-8"));
+
 
 			byte[] server_next_length_recv = read_from_server();
 			transfer_to_client(server_next_length_recv);
 
-			decrypt_and_encrypt_client_msg(messageLength);
+			byte[] client_messages = read_from_client();
+			NextMessageLengthRequest nextMessageLengthRequest = new NextMessageLengthRequest();
+			nextMessageLengthRequest.fromJSON(new String(client_messages, "UTF-8"));
+
+
+			decrypt_and_encrypt_client_msg(nextMessageLengthRequest);
 
 			byte[] server_text_recv = read_from_client();
 			transfer_to_client(server_text_recv);
@@ -284,7 +288,15 @@ public class MitMServer {
 		return buff;
 	}
 
-	public void decrypt_and_encrypt_server_msg(long messageLength) throws IOException, ParseException {
+	public void decrypt_and_encrypt_server_msg(NextLengthResponse nextLengthResponse) throws IOException, ParseException {
+		System.out.println(2);
+		long messageLength = 0L, lineNumber = 0L;
+		messageLength = nextLengthResponse.getLength();
+		lineNumber = nextLengthResponse.getId();
+		MessageLengthReceivedRequest messageLengthReceivedRequest = new MessageLengthReceivedRequest((int)lineNumber, count);
+		transfer_to_server(messageLengthReceivedRequest.toJSON().getBytes("UTF-8"));
+		System.out.println(3);
+
 		TextResponse response = new TextResponse();
 		byte[] buffer = new byte[(int)messageLength];
 		reader_from_server.read(buffer);
@@ -297,12 +309,19 @@ public class MitMServer {
 		String ciphertext = streamCipher_client.encrypt(plaintext);
 		log.debug("ciphertext to client: [" + ciphertext + "]");
 		response.setBody(ciphertext);
+
+		long length = response.toJSON().getBytes("UTF-8").length;
+		nextLengthResponse.setLength(length);
+		transfer_to_client(nextLengthResponse.toJSON().getBytes("UTF-8"));
+
+		read_from_client();
+
 		transfer_to_client(response.toJSON().getBytes("UTF-8"));
 	}
 
-	public void decrypt_and_encrypt_client_msg(long length) throws IOException, ParseException {
-		TextResponse response = new TextResponse();
-		byte[] buffer = new byte[(int) length];
+	public void decrypt_and_encrypt_client_msg(NextMessageLengthRequest nextMessageLengthRequest) throws IOException, ParseException {
+		TextRequest response = new TextRequest();
+		byte[] buffer = new byte[(int) nextMessageLengthRequest.getLength()];
 		reader_from_client.read(buffer);
 		String reply = new String(buffer, "UTF-8");
 		log.debug("Message received from client: [" + reply + "]");
