@@ -22,8 +22,6 @@ public class StreamCipher {
 			BigInteger q) {
 		this.key = share; // shared key from DH
 		this.prime = prime; // DH prime modulus
-//		p1 = p;
-//		p2 = q;
 		this.p1 = Supplementary.deriveSuppementaryKey(share, p);
 		this.p2 = Supplementary.deriveSuppementaryKey(share, q);
 		this.r_i = Supplementary.parityWordChecksum(this.key); // shift register

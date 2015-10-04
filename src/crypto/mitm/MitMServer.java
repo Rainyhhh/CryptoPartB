@@ -3,7 +3,6 @@ package crypto.mitm;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.math.BigInteger;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -12,12 +11,8 @@ import client.exception.ServerDHKeyException;
 import client.utils.StringParser;
 import crypto.messages.ClientMessageType;
 import crypto.messages.ServerMessageType;
-import crypto.messages.request.DHExDoneRequest;
-import crypto.messages.request.DHExRequest;
-import crypto.messages.response.DHExStartResponse;
-import crypto.messages.response.NextLengthResponse;
-import crypto.messages.response.SpecsResponse;
-import crypto.messages.response.TextResponse;
+import crypto.messages.request.*;
+import crypto.messages.response.*;
 import crypto.students.DHEx;
 import crypto.students.StreamCipher;
 import org.apache.log4j.Logger;
@@ -67,7 +62,6 @@ public class MitMServer {
 	StreamCipher streamCipher_client;
 
 	// communication protocol variables
-	private long[] linesToWork;
 	private BigInteger p1;
 	private BigInteger p2;
 
@@ -77,28 +71,28 @@ public class MitMServer {
 	private final int BUFFER_SIZE = 8 * 1024; // 8KB is ok...
 
 	// class constructor
-	public MitMServer(String ip, int port, String studentId) {
+	public MitMServer(String ip, int port, String studentId) throws IOException {
 		this.ip = ip;
 		this.port = port;
 		this.studentId = studentId;
-	}
-
-	// this method attends just one possible client, other
-	// connections will be discarded (server busy...)
-	public void start() throws IOException, ParseException, ServerDHKeyException {
-		// Start listening for client's messages
-		serverSocket = new ServerSocket(8002);
+		serverSocket = new ServerSocket(4444);
 		client_socket = serverSocket.accept();
 		reader_from_client = new DataInputStream(client_socket.getInputStream());
 		writer_to_client = new DataOutputStream(client_socket.getOutputStream());
 		socket = new Socket(ip, port);
 		writer_to_server = new DataOutputStream(socket.getOutputStream());
 		reader_from_server = new DataInputStream(socket.getInputStream());
+	}
 
+	// this method attends just one possible client, other
+	// connections will be discarded (server busy...)
+	public void start() throws IOException, ParseException, ServerDHKeyException {
+		// Start listening for client's messages	
 		byte[] buffer_client_hello = read_from_client();
 		String helloServer = new String(buffer_client_hello, "UTF-8");
-		transfer_to_server(buffer_client_hello);
-
+		HelloRequest helloRequest = new HelloRequest();
+		helloRequest.fromJSON(StringParser.getUTFString(helloServer));
+		transfer_to_server(helloRequest.toJSON().getBytes("UTF-8"));
 		byte[] buffer_server_hello = read_from_server();
 		String reply_from_server = new String(buffer_server_hello, "UTF-8");
 		transfer_to_client(buffer_server_hello);
@@ -116,13 +110,14 @@ public class MitMServer {
 		SpecsResponse specsResponse = new SpecsResponse();
 		specsResponse.fromJSON(StringParser.getUTFString(spec));
 
-		linesToWork = specsResponse.getOutLines();
 		p1 = specsResponse.getP1();
 		p2 = specsResponse.getP2();
 		transfer_to_client(server_spec);
 
 		byte[] client_spec = read_from_client();
-		transfer_to_server(client_spec);
+		SpecsDoneRequest specsDoneRequest = new SpecsDoneRequest();
+		specsDoneRequest.fromJSON(StringParser.getUTFString(new String(client_spec, "UTF-8")));
+		transfer_to_server(specsDoneRequest.toJSON().getBytes("UTF-8"));
 
 		streamCipher_server = new StreamCipher(shared_key_server, prime, p1, p2);
 		streamCipher_client = new StreamCipher(shared_key_client, prime, p1, p2);
@@ -139,12 +134,16 @@ public class MitMServer {
 			messageLength = response.getLength();
 
 			byte[] client_next_length_recv = read_from_client();
-			transfer_to_server(client_next_length_recv);
+			MessageLengthReceivedRequest messageLengthReceivedRequest = new MessageLengthReceivedRequest();
+			messageLengthReceivedRequest.fromJSON(StringParser.getUTFString(new String(client_next_length_recv, "UTF-8")));
+			transfer_to_server(messageLengthReceivedRequest.toJSON().getBytes("UTF-8"));
 
 			decrypt_and_encrypt_server_msg(messageLength);
 
 			byte[] client_text_recv = read_from_client();
-			transfer_to_server(client_text_recv);
+			TextReceivedRequest textReceivedRequest = new TextReceivedRequest();
+			textReceivedRequest.fromJSON(StringParser.getUTFString(new String(client_text_recv, "UTF-8")));
+			transfer_to_server(textReceivedRequest.toJSON().getBytes("UTF-8"));
 
 			msg = read_from_server();
 			server_msg = new String(msg, "UTF-8");
@@ -176,13 +175,17 @@ public class MitMServer {
 			client_msg = new String(c_msg, "UTF-8");
 		}
 		if(client_msg.contains(ClientMessageType.CLIENT_TEXT_DONE.toString())) {
-			transfer_to_server(c_msg);
+			TextDoneRequest textDoneRequest = new TextDoneRequest();
+			textDoneRequest.fromJSON(StringParser.getUTFString(client_msg));
+			transfer_to_server(textDoneRequest.toJSON().getBytes("UTF-8"));
 		}
 		byte[] server_comm_end = read_from_server();
 		transfer_to_client(server_comm_end);
 
 		byte[] client_comm_end = read_from_client();
-		transfer_to_server(client_comm_end);
+		CommDoneRequest commDoneRequest = new CommDoneRequest();
+		commDoneRequest.fromJSON(StringParser.getUTFString(new String(client_comm_end, "UTF-8")));
+		transfer_to_server(commDoneRequest.toJSON().getBytes("UTF-8"));
 
 		log.info("MITM Tasks completed successfully. Terminating cleanly...");
 		if (socket != null && !socket.isClosed())
@@ -194,7 +197,9 @@ public class MitMServer {
 	private void exchange_with_server_and_client() throws IOException, ParseException {
 		byte[] buffer_client_start = read_from_client();
 		String reply = new String(buffer_client_start, "UTF-8");
-		transfer_to_server(buffer_client_start);
+		DHExStartRequest dhExStartRequest = new DHExStartRequest();
+		dhExStartRequest.fromJSON(StringParser.getUTFString(reply));
+		transfer_to_server(dhExStartRequest.toJSON().getBytes("UTF-8"));
 
 		byte[] server_dhex = read_from_server();
 		String server_parameters = new String(server_dhex, "UTF-8");
@@ -235,26 +240,34 @@ public class MitMServer {
 
 		//calculate shared key for client
 		byte[] client_dhex_done = read_from_client();
+		StringBuffer client_shared_key = new StringBuffer().append(new String(client_dhex_done,"UTF-8"));
+		System.out.println(client_shared_key);
+		int i = client_shared_key.lastIndexOf(":");
+		client_shared_key.insert(i + 1, '"');
+		int j = client_shared_key.lastIndexOf("}");
+		client_shared_key.insert(j, '"');
+		String c = client_shared_key.toString();
+		System.out.println(client_shared_key);
 		DHExDoneRequest request_done = new DHExDoneRequest();
-		request_done.fromJSON(StringParser.getUTFString(new String(client_dhex_done, "UTF-8")));
-		shared_key_client = DHEx.getDHSharedKey(pkServer_client, skServer_client, prime);
+		request_done.fromJSON(StringParser.getUTFString(c));
+		shared_key_client = DHEx.getDHSharedKey(pkClient_client, skServer_client, prime);
 		log.debug("The shared key with client is: [" + shared_key_client + "]");
 
 		//calculate shared key for server and send
-		shared_key_server = DHEx.getDHSharedKey(pkClient_server, skClient_server, prime);
+		shared_key_server = DHEx.getDHSharedKey(pkServer_server, skClient_server, prime);
 		log.debug("The shared key with server is: [" + shared_key_server + "]");
-		request_done.setSharedKey(shared_key_server);
-		transfer_to_server(request_done.toJSON().getBytes("UTF-8"));
+		DHExDoneRequest request_done_client = new DHExDoneRequest(shared_key_server, (int)request_done.getCounter());
+		transfer_to_server(request_done_client.toJSON().getBytes("UTF-8"));
 
 	}
 	public void transfer_to_client(byte[] buff) throws IOException {
-		log.debug("MITM Message to transfer: [" + new String(buff, "UTF-8") + "]");
+		log.debug("MITM Message to transfer to client: [" + new String(buff, "UTF-8") + "]");
 		writer_to_client.write(buff);
 		writer_to_client.flush();
 	}
 
 	public void transfer_to_server(byte[] buff) throws IOException {
-		log.debug("MITM Message to transfer: [" + new String(buff, "UTF-8") + "]");
+		log.debug("MITM Message to transfer to server: [" + new String(buff, "UTF-8") + "]");
 		writer_to_server.write(buff);
 		writer_to_server.flush();
 	}
