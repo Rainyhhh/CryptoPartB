@@ -2,6 +2,7 @@ package crypto.mitm;
 
 import java.io.IOException;
 
+import client.exception.ServerDHKeyException;
 import org.apache.log4j.Logger;
 import org.json.simple.parser.ParseException;
 import org.kohsuke.args4j.CmdLineException;
@@ -21,7 +22,7 @@ public class Main {
 	
 	private static Logger log = Logger.getLogger(Main.class);
 
-	public static void main(String[] args) throws ParseException {
+	public static void main(String[] args) throws ParseException, ServerDHKeyException {
 		ArgsMitM mitmArgs = readMitMArguments(args);
 		
 		log.info("Starting server...");

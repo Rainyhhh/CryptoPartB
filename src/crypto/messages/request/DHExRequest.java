@@ -10,6 +10,7 @@ import crypto.messages.ClientMessageType;
 public class DHExRequest extends RequestBase {
 	
 	private BigInteger pkClient;
+
 	
 	public DHExRequest() {
 		setType(ClientMessageType.CLIENT_DHEX);
@@ -19,6 +20,10 @@ public class DHExRequest extends RequestBase {
 		setType(ClientMessageType.CLIENT_DHEX);
 		setCounter(n);
 		this.pkClient = pk;
+	}
+
+	public BigInteger getPkClient() {
+		return pkClient;
 	}
 
 	@SuppressWarnings("unchecked")
